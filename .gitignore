@@ -1,0 +1,31 @@
+# Go
+backend/server
+backend/*.exe
+backend/*.test
+backend/tmp/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Interview guide (personal notes, not for the repo)
+INTERVIEW_GUIDE.md
