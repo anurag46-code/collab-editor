@@ -4,12 +4,13 @@ import * as monaco from 'monaco-editor'
 
 interface Props {
   content: string
+  language: string
   onInsert: (char: string, index: number) => void
   onDelete: (index: number) => void
   onCursorMove: (line: number, col: number) => void
 }
 
-export function Editor({ content, onInsert, onDelete, onCursorMove }: Props) {
+export function Editor({ content, language, onInsert, onDelete, onCursorMove }: Props) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const suppressRef = useRef(false) // prevents remote changes from triggering local ops
 
@@ -68,7 +69,7 @@ export function Editor({ content, onInsert, onDelete, onCursorMove }: Props) {
   return (
     <MonacoEditor
       height="100%"
-      defaultLanguage="javascript"
+      language={language}
       theme="vs-dark"
       onMount={handleMount}
       options={{

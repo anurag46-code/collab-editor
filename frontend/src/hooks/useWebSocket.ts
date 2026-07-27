@@ -1,15 +1,12 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 
 type MessageHandler = (data: string) => void
 
-// useWebSocket manages a persistent WebSocket connection to the server.
-// It automatically reconnects if the connection drops.
-// token is passed as a query param because browsers cannot set
-// Authorization headers on WebSocket upgrade requests.
 export function useWebSocket(roomID: string, token: string, onMessage: MessageHandler) {
   const wsRef = useRef<WebSocket | null>(null)
   const onMessageRef = useRef(onMessage)
-  onMessageRef.current = onMessage // always call the latest handler without re-connecting
+  onMessageRef.current = onMessage
+  const [connected, setConnected] = useState(false)
 
   useEffect(() => {
     const wsBase = import.meta.env.DEV ? 'ws://localhost:8080' : `ws://${window.location.host}`
@@ -18,7 +15,7 @@ export function useWebSocket(roomID: string, token: string, onMessage: MessageHa
     wsRef.current = ws
 
     ws.onopen = () => {
-      console.log(`[ws] connected to room ${roomID}`)
+      setConnected(true)
     }
 
     ws.onmessage = (event) => {
@@ -30,10 +27,9 @@ export function useWebSocket(roomID: string, token: string, onMessage: MessageHa
     }
 
     ws.onclose = () => {
-      console.log('[ws] disconnected')
+      setConnected(false)
     }
 
-    // Cleanup: close the connection when the component unmounts or roomID changes
     return () => {
       ws.close()
     }
@@ -45,5 +41,5 @@ export function useWebSocket(roomID: string, token: string, onMessage: MessageHa
     }
   }, [])
 
-  return { send }
+  return { send, connected }
 }

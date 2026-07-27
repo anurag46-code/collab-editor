@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 
 // MsgType mirrors the Go server constants
-type MsgType = 'op' | 'snapshot' | 'presence'
+type MsgType = 'op' | 'snapshot' | 'presence' | 'lang'
 
 interface Identifier {
   digit: number
@@ -18,18 +18,28 @@ interface Op {
   clock: number
 }
 
+interface EntryJSON {
+  pos: Position
+  char: number
+}
+
 interface Message {
   type: MsgType
   op?: Op
-  content?: string    // snapshot
-  clientId?: string   // presence
-  line?: number       // presence
-  col?: number        // presence
-  color?: string      // presence
+  content?: string      // snapshot: plain text
+  entries?: EntryJSON[] // snapshot: full CRDT state
+  ownerId?: string      // snapshot: room owner
+  language?: string     // snapshot: current lang | lang: new lang
+  clientId?: string     // presence
+  email?: string        // presence
+  line?: number         // presence
+  col?: number          // presence
+  color?: string        // presence
 }
 
 interface PresenceInfo {
   clientID: string
+  email: string
   line: number
   col: number
   color: string
@@ -80,8 +90,11 @@ function between(lo: Position | null, hi: Position | null, siteID: string): Posi
   }
 }
 
-export function useDocument(clientID: string, send: (data: string) => void) {
+export function useDocument(clientID: string, email: string, send: (data: string) => void) {
   const [content, setContent] = useState('')
+  const [snapshotReady, setSnapshotReady] = useState(false)
+  const [ownerID, setOwnerID] = useState<string | null>(null)
+  const [language, setLanguage] = useState('javascript')
   const entriesRef = useRef<Entry[]>([])
   const clockRef = useRef(0)
   const [presence, setPresence] = useState<PresenceInfo[]>([])
@@ -115,8 +128,22 @@ export function useDocument(clientID: string, send: (data: string) => void) {
     const msg: Message = JSON.parse(raw)
 
     if (msg.type === 'snapshot') {
-      entriesRef.current = []
+      if (msg.entries && msg.entries.length > 0) {
+        entriesRef.current = msg.entries.map(e => ({
+          pos: e.pos,
+          char: String.fromCodePoint(e.char),
+        }))
+      } else {
+        entriesRef.current = []
+      }
       setContent(msg.content ?? '')
+      if (msg.ownerId) setOwnerID(msg.ownerId)
+      if (msg.language) setLanguage(msg.language)
+      setSnapshotReady(true)
+    }
+
+    if (msg.type === 'lang' && msg.language) {
+      setLanguage(msg.language)
     }
 
     if (msg.type === 'op' && msg.op) {
@@ -126,6 +153,7 @@ export function useDocument(clientID: string, send: (data: string) => void) {
     if (msg.type === 'presence' && msg.clientId) {
       const p: PresenceInfo = {
         clientID: msg.clientId,
+        email: msg.email ?? msg.clientId,
         line: msg.line ?? 0,
         col: msg.col ?? 0,
         color: msg.color ?? '#888',
@@ -177,8 +205,22 @@ export function useDocument(clientID: string, send: (data: string) => void) {
 
   // sendPresence broadcasts cursor position to other clients
   const sendPresence = useCallback((line: number, col: number, color: string) => {
-    send(JSON.stringify({ type: 'presence', clientId: clientID, line, col, color }))
-  }, [clientID, send])
+    send(JSON.stringify({ type: 'presence', clientId: clientID, email, line, col, color }))
+  }, [clientID, email, send])
 
-  return { content, presence, handleMessage, localInsert, localDelete, sendPresence }
+  // replaceContent clears the document and bulk-inserts new text as CRDT ops.
+  // Used when loading a language snippet into an empty document.
+  const replaceContent = useCallback((_text: string, _lang: string) => {
+    // Delete all existing characters back-to-front (so indices stay valid)
+    const entries = entriesRef.current
+    for (let i = entries.length - 1; i >= 0; i--) {
+      localDelete(i)
+    }
+    // Insert new text character by character
+    for (let i = 0; i < _text.length; i++) {
+      localInsert(_text[i], i)
+    }
+  }, [localInsert, localDelete])
+
+  return { content, snapshotReady, ownerID, language, presence, handleMessage, localInsert, localDelete, sendPresence, replaceContent }
 }

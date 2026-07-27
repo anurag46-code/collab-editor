@@ -34,8 +34,10 @@ type Hub struct {
 
 // hubRoom bundles the room document with its connected clients.
 type hubRoom struct {
-	room    *room.Room
-	clients map[string]*Client
+	room     *room.Room
+	clients  map[string]*Client
+	ownerID  string // first client to join; only they can change the language
+	language string // current language, broadcast to late joiners
 }
 
 func NewHub(s *store.Store) *Hub {
@@ -81,14 +83,14 @@ func (h *Hub) Run() {
 					log.Printf("room %s restored from snapshot (%d chars)", client.RoomID, len(saved))
 				}
 
-				hr = &hubRoom{room: r, clients: make(map[string]*Client)}
+				hr = &hubRoom{room: r, clients: make(map[string]*Client), ownerID: client.ID, language: "javascript"}
 				h.rooms[client.RoomID] = hr
 			}
 			hr.clients[client.ID] = client
 			log.Printf("client %s joined room %s (%d total)", client.ID, client.RoomID, len(hr.clients))
 
 			// Send current document state to the joining client.
-			snap, err := NewSnapshotMessage(hr.room.Document.Content())
+			snap, err := NewSnapshotMessage(hr.room.Document.Content(), hr.room.Document.Entries(), hr.ownerID, hr.language)
 			if err == nil {
 				client.send <- snap
 			}
@@ -131,9 +133,26 @@ func (h *Hub) Run() {
 			}
 
 			// Apply the op to the server-side document.
-			// The server keeps its own replica so it can send snapshots to late joiners.
 			if envelope.Type == MsgTypeOp && envelope.Op != nil {
 				hr.room.Document.Apply(*envelope.Op)
+			}
+
+			// Language change: only the owner can change it; fan out to everyone including sender.
+			if envelope.Type == MsgTypeLang && envelope.Language != "" {
+				if msg.SenderID != hr.ownerID {
+					log.Printf("client %s tried to change language but is not owner", msg.SenderID)
+					continue
+				}
+				hr.language = envelope.Language
+				for _, client := range hr.clients {
+					select {
+					case client.send <- msg.Data:
+					default:
+						close(client.send)
+						delete(hr.clients, client.ID)
+					}
+				}
+				continue
 			}
 
 			// Fan out to all other clients in the room.

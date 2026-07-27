@@ -121,6 +121,21 @@ func (d *Document) Len() int {
 	return len(d.entries)
 }
 
+// EntryJSON is a serializable form of an entry, used when sending snapshots to clients.
+type EntryJSON struct {
+	Pos  Position `json:"pos"`
+	Char int32    `json:"char"`
+}
+
+// Entries returns all current entries for snapshotting to joining clients.
+func (d *Document) Entries() []EntryJSON {
+	result := make([]EntryJSON, len(d.entries))
+	for i, e := range d.entries {
+		result[i] = EntryJSON{Pos: e.pos, Char: int32(e.char)}
+	}
+	return result
+}
+
 // SetContent bootstraps a document from a plain text string (e.g. a Postgres snapshot).
 // Each character gets a sequential position - used only for restoring persisted state,
 // not for live editing (which uses Insert/Delete with proper CRDT positions).
