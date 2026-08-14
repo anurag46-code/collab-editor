@@ -2,6 +2,8 @@
 
 A real-time collaborative code editor supporting concurrent multi-user editing with conflict-free document convergence via CRDTs.
 
+**Live demo:** http://15.252.165.209
+
 ## Architecture
 
 ```
